@@ -1,0 +1,4 @@
+# Optional: real multilingual embeddings (BAAI/bge-m3) for non-mock retrieval.
+# Pulls in torch, so it is intentionally NOT installed by default. Enable with
+# the INSTALL_EMBEDDINGS=true build arg, or `pip install -r` locally.
+sentence-transformers==5.5.1

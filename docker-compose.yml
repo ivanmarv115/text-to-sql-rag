@@ -1,0 +1,100 @@
+# Base composition. On a server this runs registry images as-is. Locally it is
+# merged with docker-compose.override.yml (automatically), which builds the app
+# from source and runs migrations from the local ./flyway directory — so
+# `docker compose up` Just Works with no registry access and no GPU.
+name: text2sql
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app_demo_pw}
+      POSTGRES_DB: ${PG_DBNAME:-clinic_demo}
+      CHAINLIT_DB_NAME: ${CHAINLIT_DB_NAME:-chainlit}
+      READONLY_DB_USER: ${PG_USER:-llm_readonly}
+      READONLY_DB_PASSWORD: ${PG_PASSWORD:-readonly_demo_pw}
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${PG_DBNAME:-clinic_demo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # Runs migrations against BOTH databases, then exits. The app waits for it.
+  flyway:
+    image: registry.example.com/${REGISTRY_ORG:-your-org}/text2sql-flyway:${IMAGE_TAG:-latest}
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    # Call flyway by absolute path: we override the image entrypoint, so we must
+    # not rely on flyway being on PATH.
+    command:
+      - |
+        /flyway/flyway -url=jdbc:postgresql://db:5432/${PG_DBNAME:-clinic_demo} \
+               -user=${POSTGRES_USER:-app} -password=${POSTGRES_PASSWORD:-app_demo_pw} \
+               -locations=filesystem:/flyway/sql/clinic -connectRetries=60 migrate && \
+        /flyway/flyway -url=jdbc:postgresql://db:5432/${CHAINLIT_DB_NAME:-chainlit} \
+               -user=${POSTGRES_USER:-app} -password=${POSTGRES_PASSWORD:-app_demo_pw} \
+               -locations=filesystem:/flyway/sql/chainlit -connectRetries=60 migrate
+
+  app:
+    image: registry.example.com/${REGISTRY_ORG:-your-org}/text2sql:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      flyway:
+        condition: service_completed_successfully
+    extra_hosts:
+      # lets LLM_MODE=vllm reach a model server running on the host (Linux)
+      - "host.docker.internal:host-gateway"
+    environment:
+      # mock = no GPU / no model server (default). Set to "vllm" for real models.
+      LLM_MODE: ${LLM_MODE:-mock}
+
+      # read-only clinic (target) database
+      PG_HOST: db
+      PG_PORT: "5432"
+      PG_DBNAME: ${PG_DBNAME:-clinic_demo}
+      PG_USER: ${PG_USER:-llm_readonly}
+      PG_PASSWORD: ${PG_PASSWORD:-readonly_demo_pw}
+
+      # Chainlit / audit database
+      CHAINLIT_DB_HOST: db
+      CHAINLIT_DB_PORT: "5432"
+      CHAINLIT_DB_NAME: ${CHAINLIT_DB_NAME:-chainlit}
+      CHAINLIT_DB_USER: ${POSTGRES_USER:-app}
+      CHAINLIT_DB_PASSWORD: ${POSTGRES_PASSWORD:-app_demo_pw}
+      CHAINLIT_DB_URL: postgresql+asyncpg://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app_demo_pw}@db:5432/${CHAINLIT_DB_NAME:-chainlit}
+      CHAINLIT_AUTH_SECRET: ${CHAINLIT_AUTH_SECRET:-change-me-run-chainlit-create-secret}
+
+      # demo login (created on startup); change/disable for anything real
+      CREATE_DEMO_USER: ${CREATE_DEMO_USER:-true}
+      DEMO_USERNAME: ${DEMO_USERNAME:-demo}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-demo}
+
+      # vLLM servers (only used when LLM_MODE=vllm)
+      VLLM_BIG_BRAIN_BASE_URL: ${VLLM_BIG_BRAIN_BASE_URL:-http://host.docker.internal:8000/v1}
+      VLLM_BIG_BRAIN_MODEL: ${VLLM_BIG_BRAIN_MODEL:-big-instruct-model}
+      VLLM_BIG_BRAIN_API_KEY: ${VLLM_BIG_BRAIN_API_KEY:-}
+      VLLM_SMALL_BRAIN_BASE_URL: ${VLLM_SMALL_BRAIN_BASE_URL:-http://host.docker.internal:8001/v1}
+      VLLM_SMALL_BRAIN_MODEL: ${VLLM_SMALL_BRAIN_MODEL:-small-instruct-model}
+      VLLM_SMALL_BRAIN_API_KEY: ${VLLM_SMALL_BRAIN_API_KEY:-}
+
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-}
+      SEED_ON_STARTUP: "true"
+      DEBUG_CHAT: ${DEBUG_CHAT:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    volumes:
+      - chromadata:/data/chroma
+
+volumes:
+  dbdata:
+  chromadata:

@@ -1,0 +1,19 @@
+# Local development overrides — merged automatically by `docker compose`.
+# Builds the app image from source and runs migrations from the local ./flyway
+# directory using the public Flyway image (no need to build/pull a registry
+# image). This is what makes `docker compose up` work out of the box.
+services:
+  flyway:
+    image: flyway/flyway:10
+    volumes:
+      - ./flyway/clinic:/flyway/sql/clinic:ro
+      - ./flyway/chainlit:/flyway/sql/chainlit:ro
+
+  app:
+    image: text2sql-app:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # set to "true" to bake in bge-m3 embeddings for LLM_MODE=vllm
+        INSTALL_EMBEDDINGS: "false"

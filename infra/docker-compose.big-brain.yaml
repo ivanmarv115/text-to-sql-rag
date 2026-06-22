@@ -1,0 +1,26 @@
+# vLLM "big brain" — large dense instruct model for SQL generation.
+# Requires an NVIDIA GPU + the NVIDIA Container Toolkit. Genericized: set your
+# own model id in .env. Pin the image tag for reproducibility.
+services:
+  vllm-big-brain:
+    image: vllm/vllm-openai:latest
+    restart: unless-stopped
+    command: >
+      --model ${BIG_BRAIN_MODEL:-<your-big-instruct-model>}
+      --served-model-name big-instruct-model
+      --max-model-len ${BIG_BRAIN_MAX_LEN:-8192}
+      --api-key ${BIG_BRAIN_API_KEY:-}
+    environment:
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ${HF_CACHE:-./hf-cache}:/root/.cache/huggingface
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

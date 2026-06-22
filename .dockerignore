@@ -1,0 +1,30 @@
+# Keep the application build context small and clean.
+.git
+.github
+.gitignore
+.dockerignore
+.env
+.env.*
+!.env.example
+
+# things that belong to other images / the host, not the app image
+flyway/
+db/
+infra/
+shell/
+scripts/
+tests/
+docs/
+screenshots/
+*.md
+!chainlit.md
+
+# python / tooling cruft
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+data/

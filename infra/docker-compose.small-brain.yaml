@@ -1,0 +1,25 @@
+# vLLM "small brain" — small quantized instruct model for formatting / chat.
+# Lighter than the big brain; can share a host or run on a smaller GPU.
+services:
+  vllm-small-brain:
+    image: vllm/vllm-openai:latest
+    restart: unless-stopped
+    command: >
+      --model ${SMALL_BRAIN_MODEL:-<your-small-instruct-model>}
+      --served-model-name small-instruct-model
+      --max-model-len ${SMALL_BRAIN_MAX_LEN:-8192}
+      --api-key ${SMALL_BRAIN_API_KEY:-}
+    environment:
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
+    ports:
+      - "8001:8000"
+    volumes:
+      - ${HF_CACHE:-./hf-cache}:/root/.cache/huggingface
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

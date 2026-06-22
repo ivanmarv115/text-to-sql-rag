@@ -1,0 +1,8 @@
+# Flyway image with the migrations baked in — used for production deploys
+# (push to a registry, run on the server with no source checkout). Local
+# development instead mounts ./flyway into the public flyway image; see
+# docker-compose.override.yml.
+FROM flyway/flyway:10
+
+COPY flyway/clinic   /flyway/sql/clinic
+COPY flyway/chainlit /flyway/sql/chainlit
